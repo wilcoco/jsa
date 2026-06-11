@@ -1,0 +1,470 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <div class="mb-4 flex items-center justify-between">
+    <h2 class="text-base font-semibold text-slate-900">
+      자금계획 등록
+    </h2>
+    <a
+      href="{{ url_for('index') }}"
+      class="text-sm text-slate-500 hover:text-slate-700"
+    >
+      목록으로
+    </a>
+  </div>
+
+  {% if register_deadline or check_deadline %}
+    <div class="mb-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+      {% if register_deadline %}
+        <span class="mr-4">
+          등록 마감일:
+          <span class="font-semibold {{ 'text-red-600' if is_register_deadline_over else 'text-slate-900' }}">{{ register_deadline }}</span>
+          {% if is_register_deadline_over %}
+            <span class="ml-1 text-[11px] text-red-500">(마감 지남)</span>
+          {% endif %}
+        </span>
+      {% endif %}
+      {% if check_deadline %}
+        <span>
+          체크 마감일:
+          <span class="font-semibold text-slate-900">{{ check_deadline }}</span>
+        </span>
+      {% endif %}
+    </div>
+  {% endif %}
+
+  {% if is_closed %}
+    <div class="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+      이미 마감된 자금계획입니다. 내용을 조회만 할 수 있고 수정하거나 저장할 수 없습니다.
+    </div>
+  {% endif %}
+
+  <form
+    method="post"
+    class="space-y-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
+    data-is-closed="{{ '1' if is_closed else '0' }}"
+    data-edit-deadline-over="{{ '1' if is_register_deadline_over else '0' }}"
+  >
+    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <div>
+        <label class="mb-1 block text-sm font-medium text-slate-700">
+          부서
+        </label>
+        <select
+          name="department"
+          required
+          class="block w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white"
+        >
+          <option value="" disabled {% if not department %}selected{% endif %}>부서를 선택하세요</option>
+          {% for dept_key, dept_name in department_options %}
+            <option value="{{ dept_key }}" {% if department == dept_key %}selected{% endif %}>{{ dept_name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div>
+        <label class="mb-1 block text-sm font-medium text-slate-700">
+          계획 월
+        </label>
+        <div class="flex items-center gap-2">
+          <input
+            type="month"
+            name="year_month"
+            value="{{ year_month }}"
+            required
+            class="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          />
+          <button
+            type="button"
+            id="load-draft-btn"
+            class="inline-flex w-20 items-center justify-center rounded-md border border-slate-300 bg-white px-2 py-1.5 text-[11px] font-medium text-slate-700 shadow-sm hover:bg-slate-50 text-center whitespace-normal leading-tight"
+          >
+            임시저장<br />불러오기
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="mt-4">
+      <div class="mb-2 flex items-center justify-between">
+        <div class="flex flex-col gap-0.5">
+          <h3 class="text-sm font-medium text-slate-800">세부 자금계획 (최대 200건)</h3>
+          <p id="carry-over-info" class="text-[11px] text-slate-500"></p>
+        </div>
+        <div class="flex items-center gap-2">
+          <p class="text-xs text-slate-500">업체명, 금액, 내용을 행 단위로 입력하세요. 비어 있는 행은 자동으로 무시됩니다.</p>
+          <button
+            type="button"
+            id="add-row-btn"
+            class="inline-flex items-center rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+          >
+            행 추가
+          </button>
+        </div>
+      </div>
+
+      <div class="overflow-hidden rounded-md border border-slate-200 bg-white">
+        <table class="min-w-full divide-y divide-slate-200 text-sm">
+          <thead class="bg-slate-50">
+            <tr>
+              <th class="px-3 py-2 text-center text-xs font-medium text-slate-500 w-10">NO</th>
+              <th class="px-3 py-2 text-center text-xs font-medium text-slate-600 w-40">업체명</th>
+              <th class="px-3 py-2 text-center text-xs font-medium text-slate-600 w-40">계약금액</th>
+              <th class="px-3 py-2 text-center text-xs font-medium text-slate-600 w-40">계획금액</th>
+              <th class="px-3 py-2 text-center text-xs font-medium text-slate-600 w-auto">내용</th>
+              <th class="px-3 py-2 text-center text-xs font-medium text-slate-500 w-16">삭제</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100">
+            {% for i in range(1, 201) %}
+              {% set row = existing_rows[i-1] if existing_rows and i-1 < existing_rows|length else None %}
+              <tr class="align-top" data-row-index="{{ i }}" {% if i > 5 %}style="display: none;"{% endif %}>
+                <td class="px-3 py-2 text-xs text-center text-slate-400 w-10">{{ i }}</td>
+                <td class="px-3 py-2 w-40">
+                  <input
+                    type="text"
+                    name="vendor_name_{{ i }}"
+                    value="{{ row.vendor_name if row else '' }}"
+                    class="block w-full rounded-md border border-slate-300 px-2 py-1 text-xs shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    placeholder="예: ○○상사"
+                  />
+                </td>
+                <td class="px-3 py-2 w-40">
+                  <div class="relative">
+                    <input
+                      type="text"
+                      name="contract_amount_{{ i }}"
+                      inputmode="numeric"
+                      class="money-input block w-full rounded-md border border-slate-300 px-2 py-1 pr-8 text-right text-xs shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      placeholder="0"
+                      value="{{ '{:,}'.format(row.contract_amount) if row and row.contract_amount is not none else '' }}"
+                    />
+                    <span class="pointer-events-none absolute inset-y-0 right-2 flex items-center text-[10px] text-slate-400">
+                      원
+                    </span>
+                  </div>
+                </td>
+                <td class="px-3 py-2">
+                  <div class="relative">
+                    <input
+                      type="text"
+                      name="amount_{{ i }}"
+                      inputmode="numeric"
+                      class="money-input block w-full rounded-md border border-slate-300 px-2 py-1 pr-8 text-right text-xs shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      placeholder="0"
+                      value="{{ '{:,}'.format(row.amount) if row and row.amount is not none else '' }}"
+                    />
+                    <span class="pointer-events-none absolute inset-y-0 right-2 flex items-center text-[10px] text-slate-400">
+                      원
+                    </span>
+                  </div>
+                </td>
+                <td class="px-3 py-2">
+                  <input
+                    type="text"
+                    name="description_{{ i }}"
+                    value="{{ row.description if row else '' }}"
+                    class="block w-full rounded-md border border-slate-300 px-2 py-1 text-xs shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    placeholder="예: 설비투자, 프로젝트 A 선금 등"
+                  />
+                  <div class="carry-summary mt-1 text-[10px] text-slate-500 hidden">
+                    누적지급금액: <span class="carry-paid">-</span>원 / 남은잔액: <span class="carry-remaining">-</span>원
+                  </div>
+                </td>
+                <td class="px-3 py-2 text-center align-middle">
+                  <button
+                    type="button"
+                    class="delete-row-btn inline-flex items-center rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] font-medium text-slate-600 shadow-sm hover:bg-slate-50"
+                  >
+                    삭제
+                  </button>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="flex items-center justify-end gap-2 pt-4">
+      <a
+        href="{{ url_for('index') }}"
+        class="inline-flex items-center rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+      >
+        취소
+      </a>
+      {% if not is_closed and not is_register_deadline_over %}
+        <button
+          type="submit"
+          name="action"
+          value="save"
+          class="inline-flex items-center rounded-md border border-slate-300 bg-white px-4 py-1.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
+        >
+          임시저장
+        </button>
+        <button
+          type="submit"
+          name="action"
+          value="submit"
+          class="inline-flex items-center rounded-md bg-indigo-600 px-4 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700"
+        >
+          최종제출
+        </button>
+      {% elif is_register_deadline_over %}
+        <span class="text-xs text-red-600">등록 마감일이 지나 계획을 저장하거나 제출할 수 없습니다.</span>
+      {% endif %}
+    </div>
+  </form>
+
+  <script>
+    (function () {
+      const form = document.querySelector('form[method="post"]');
+      const monthInput = document.querySelector('input[name="year_month"]');
+      const addRowBtn = document.getElementById('add-row-btn');
+      const rows = Array.from(document.querySelectorAll('tbody tr[data-row-index]'));
+      const departmentSelect = document.querySelector('select[name="department"]');
+      const deleteButtons = document.querySelectorAll('.delete-row-btn');
+      const carryOverInfo = document.getElementById('carry-over-info');
+      const loadDraftBtn = document.getElementById('load-draft-btn');
+      const isClosed = form && form.getAttribute('data-is-closed') === '1';
+      const isEditDeadlineOver = form && form.getAttribute('data-edit-deadline-over') === '1';
+
+      // 마감된 계획일 경우 폼을 읽기 전용으로 전환
+      if ((isClosed || isEditDeadlineOver) && form) {
+        const inputs = form.querySelectorAll('input, select, textarea');
+        inputs.forEach((el) => {
+          el.setAttribute('disabled', 'disabled');
+        });
+      }
+
+      // 행 번호를 보이는 행 기준으로 1부터 다시 매기기
+      function updateRowNumbers() {
+        let no = 1;
+        rows.forEach((row) => {
+          if (row.style.display === 'none') return;
+          const noCell = row.querySelector('td');
+          if (noCell) {
+            noCell.textContent = no.toString();
+            no += 1;
+          }
+        });
+      }
+
+      // 선택한 부서/월 기준으로 임시저장된 계획 불러오기
+      if (loadDraftBtn) {
+        loadDraftBtn.addEventListener('click', function () {
+          const dept = departmentSelect ? departmentSelect.value : '';
+          const ym = monthInput ? monthInput.value : '';
+          if (!dept || !ym) {
+            alert('부서와 계획 월을 먼저 선택해 주세요.');
+            return;
+          }
+
+          const params = new URLSearchParams();
+          params.set('department', dept);
+          params.set('year_month', ym);
+          const basePath = window.location.pathname || '/plans/new';
+          window.location.href = basePath + '?' + params.toString();
+        });
+      }
+
+      // 행 추가/삭제 후 버튼 상태 업데이트
+      function updateAddRowButtonState() {
+        if (!addRowBtn) return;
+        const hasHiddenRow = rows.some((row) => row.style.display === 'none');
+        addRowBtn.disabled = !hasHiddenRow;
+      }
+
+      // 행 추가 기능: 처음에는 5행만 보이고, 버튼을 누를 때마다 숨겨진 행을 하나씩 표시
+      function initializeRowVisibility() {
+        rows.forEach((row, idx) => {
+          if (idx < 5) {
+            row.style.display = '';
+          } else {
+            row.style.display = 'none';
+          }
+        });
+        updateRowNumbers();
+        updateAddRowButtonState();
+      }
+
+      if (addRowBtn) {
+        addRowBtn.addEventListener('click', function () {
+          const hiddenRow = rows.find((row) => row.style.display === 'none');
+          if (!hiddenRow) return;
+
+          hiddenRow.style.display = '';
+          updateRowNumbers();
+          updateAddRowButtonState();
+        });
+      }
+
+      // 초기 행 표시 상태 적용
+      initializeRowVisibility();
+
+      // 행 삭제 기능: 해당 행의 모든 입력 값을 초기화 후 행 숨기기 및 번호 재정렬
+      deleteButtons.forEach((btn) => {
+        btn.addEventListener('click', function () {
+          const row = this.closest('tr');
+          if (!row) return;
+
+          const inputs = row.querySelectorAll('input');
+          inputs.forEach((input) => {
+            input.value = '';
+          });
+
+          const summaryDiv = row.querySelector('.carry-summary');
+          if (summaryDiv && !summaryDiv.classList.contains('hidden')) {
+            summaryDiv.classList.add('hidden');
+          }
+
+          row.style.display = 'none';
+          updateRowNumbers();
+          updateAddRowButtonState();
+        });
+      });
+
+      // 금액 입력에 천 단위 콤마 표시
+      const moneyInputs = document.querySelectorAll('.money-input');
+
+      function formatNumberWithCommas(value) {
+        const digits = value.replace(/[^0-9]/g, '');
+        if (!digits) return '';
+        return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+      }
+
+      moneyInputs.forEach((input) => {
+        input.addEventListener('input', function () {
+          const cursorPosFromEnd = this.value.length - this.selectionStart;
+          const formatted = formatNumberWithCommas(this.value);
+          this.value = formatted;
+          const newPos = this.value.length - cursorPosFromEnd;
+          this.setSelectionRange(newPos, newPos);
+        });
+
+        input.addEventListener('blur', function () {
+          this.value = formatNumberWithCommas(this.value);
+        });
+      });
+
+      // 이월 계획 자동 입력: 현재 선택한 계획 월의 이전 달 + 부서 기준으로 필터링
+      const carryOverPlans = {{ carry_over_plans|tojson|safe }};
+
+      function applyCarryOver() {
+        const dept = departmentSelect ? departmentSelect.value : '';
+        const ym = monthInput ? monthInput.value : '';
+        if (!dept || !ym) {
+          if (carryOverInfo) {
+            carryOverInfo.textContent = '';
+          }
+          return;
+        }
+
+        // 현재 선택된 계획 월보다 이전(year_month < ym)이고, 같은 부서에 해당하는 모든 이월/잔액 계획을 모은다.
+        const rawCandidates = carryOverPlans.filter(
+          (p) => p.department === dept && p.year_month < ym,
+        );
+
+        // 같은 계약(업체명 + 내용 + 계약금액)에 대해 여러 달에 걸쳐 존재하는 경우,
+        // 가장 최근 year_month 하나만 남기도록 중복 제거한다.
+        const byContract = new Map();
+        rawCandidates.forEach((p) => {
+          const key = [p.vendor_name || '', p.description || '', p.contract_amount || 0].join('||');
+          const existing = byContract.get(key);
+          if (!existing || existing.year_month < p.year_month) {
+            byContract.set(key, p);
+          }
+        });
+
+        const candidates = Array.from(byContract.values()).sort((a, b) => {
+          if (a.year_month !== b.year_month) {
+            return a.year_month.localeCompare(b.year_month);
+          }
+          const av = a.vendor_name || '';
+          const bv = b.vendor_name || '';
+          if (av !== bv) return av.localeCompare(bv);
+          const ad = a.description || '';
+          const bd = b.description || '';
+          return ad.localeCompare(bd);
+        });
+
+        if (!candidates.length) {
+          if (carryOverInfo) {
+            carryOverInfo.textContent = '';
+          }
+          return;
+        }
+
+        const minYm = candidates[0].year_month;
+        const maxYm = candidates[candidates.length - 1].year_month;
+
+        if (carryOverInfo) {
+          carryOverInfo.textContent = '이월 대상 기간: ' + minYm + ' ~ ' + maxYm + ' (선택 월 이전 잔액/이월 건)';
+        }
+
+        candidates.forEach((plan, idx) => {
+          const i = idx + 1;
+          const row = document.querySelector('tr[data-row-index="' + i + '"]');
+          if (!row) return;
+
+          const vendorInput = row.querySelector('input[name="vendor_name_' + i + '"]');
+          const contractInput = row.querySelector('input[name="contract_amount_' + i + '"]');
+          const amountInput = row.querySelector('input[name="amount_' + i + '"]');
+          const descInput = row.querySelector('input[name="description_' + i + '"]');
+          const summaryDiv = row.querySelector('.carry-summary');
+          const paidSpan = row.querySelector('.carry-paid');
+          const remainingSpan = row.querySelector('.carry-remaining');
+
+          if (vendorInput && !vendorInput.value) {
+            vendorInput.value = plan.vendor_name || '';
+          }
+
+          if (contractInput && plan.contract_amount != null) {
+            // 이월시 계약금액은 그대로 유지 (없다면 채워 넣기)
+            if (!contractInput.value) {
+              contractInput.value = formatNumberWithCommas(String(plan.contract_amount));
+            }
+          }
+
+          if (amountInput) {
+            // 이월된 건은 계획금액을 0으로 두고 담당자가 다시 입력
+            amountInput.value = '';
+          }
+
+          if (descInput && !descInput.value) {
+            descInput.value = plan.description || '';
+          }
+
+          // 계약금액/remaining_amount가 있는 경우 요약 표시
+          if (summaryDiv && paidSpan && remainingSpan && plan.contract_amount != null && plan.remaining_amount != null) {
+            const contract = Number(plan.contract_amount) || 0;
+            const remaining = Number(plan.remaining_amount) || 0;
+            const paid = Math.max(contract - remaining, 0);
+
+            paidSpan.textContent = formatNumberWithCommas(String(paid));
+            remainingSpan.textContent = formatNumberWithCommas(String(remaining));
+            summaryDiv.classList.remove('hidden');
+          }
+        });
+      }
+
+      if (departmentSelect) {
+        departmentSelect.addEventListener('change', applyCarryOver);
+      }
+      if (monthInput) {
+        monthInput.addEventListener('change', applyCarryOver);
+      }
+
+      // 폼 전송 전에 금액 입력에서 콤마 제거
+      if (form) {
+        form.addEventListener('submit', function () {
+          const inputs = form.querySelectorAll('.money-input');
+          inputs.forEach((input) => {
+            input.value = input.value.replace(/[^0-9]/g, '');
+          });
+        });
+      }
+    })();
+  </script>
+
+{% endblock %}

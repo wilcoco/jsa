@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <div class="mb-4 flex items-center justify-between">
+    <h2 class="text-base font-semibold text-slate-900">
+      부서별 메일 수신자 설정
+    </h2>
+    <a
+      href="{{ url_for('index') }}"
+      class="text-sm text-slate-500 hover:text-slate-700"
+    >
+      목록으로
+    </a>
+  </div>
+
+  <form
+    method="post"
+    class="space-y-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
+  >
+    <p class="text-xs text-slate-500 mb-2">
+      각 부서별로 알림 메일을 받을 이메일 주소를 입력하세요. 여러 개일 경우 쉼표(,)로 구분합니다.
+    </p>
+
+    <div class="overflow-hidden rounded-md border border-slate-200 bg-white">
+      <table class="min-w-full divide-y divide-slate-200 text-sm">
+        <thead class="bg-slate-50">
+          <tr>
+            <th class="px-4 py-2 text-left text-xs font-medium text-slate-600 w-40">부서 키</th>
+            <th class="px-4 py-2 text-left text-xs font-medium text-slate-600 w-40">표시 이름</th>
+            <th class="px-4 py-2 text-center text-xs font-medium text-slate-600 w-20">사용</th>
+            <th class="px-4 py-2 text-left text-xs font-medium text-slate-600">메일 수신자 (쉼표로 구분)</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100 bg-white">
+          {% for dept in departments %}
+            <tr>
+              <td class="px-4 py-2 whitespace-nowrap text-sm text-slate-800">
+                {{ dept }}
+              </td>
+              <td class="px-4 py-2 text-sm text-slate-800">
+                <input
+                  type="text"
+                  name="display_name_{{ dept }}"
+                  value="{{ display_names.get(dept, dept) }}"
+                  class="mt-1 block w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                />
+              </td>
+              <td class="px-4 py-2 text-center align-middle">
+                <input
+                  type="checkbox"
+                  name="active_{{ dept }}"
+                  {% if active_flags.get(dept, True) %}checked{% endif %}
+                  class="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                />
+              </td>
+              <td class="px-4 py-2 text-sm text-slate-800">
+                <input
+                  type="text"
+                  name="emails_{{ dept }}"
+                  value="{{ email_settings.get(dept, '') }}"
+                  class="mt-1 block w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  placeholder="예: user1@icams.co.kr, user2@icams.co.kr"
+                />
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="mt-6 rounded-md border border-dashed border-slate-300 bg-slate-50 p-4">
+      <h3 class="mb-2 text-sm font-medium text-slate-800">새 부서 추가</h3>
+      <div class="grid gap-3 sm:grid-cols-4">
+        <div>
+          <label class="mb-1 block text-xs font-medium text-slate-600">부서 키</label>
+          <input
+            type="text"
+            name="new_department_key"
+            class="block w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            placeholder="예: 품질개발팀"
+          />
+        </div>
+        <div>
+          <label class="mb-1 block text-xs font-medium text-slate-600">표시 이름</label>
+          <input
+            type="text"
+            name="new_display_name"
+            class="block w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            placeholder="예: 품질개발팀 (표시용)"
+          />
+        </div>
+        <div class="sm:col-span-2">
+          <label class="mb-1 block text-xs font-medium text-slate-600">메일 수신자</label>
+          <input
+            type="text"
+            name="new_emails"
+            class="block w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            placeholder="예: user1@icams.co.kr, user2@icams.co.kr"
+          />
+        </div>
+      </div>
+    </div>
+
+    <div class="flex items-center justify-end gap-2 pt-4">
+      <a
+        href="{{ url_for('index') }}"
+        class="inline-flex items-center rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+      >
+        취소
+      </a>
+      <button
+        type="submit"
+        class="inline-flex items-center rounded-md bg-indigo-600 px-4 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700"
+      >
+        저장
+      </button>
+    </div>
+  </form>
+{% endblock %}

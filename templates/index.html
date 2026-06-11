@@ -1,0 +1,183 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <div class="mb-4 flex items-center justify-between">
+    <h2 class="text-base font-semibold text-slate-900">
+      자금계획 현황
+    </h2>
+    <div class="flex flex-col items-end gap-1">
+      <p class="text-xs text-slate-500">
+        기준일: {{ today }}
+      </p>
+      {% if session.get('is_admin') %}
+        <form
+          method="post"
+          action="{{ url_for('send_department_notification') }}"
+          class="flex flex-wrap items-center justify-end gap-2 text-xs text-slate-700"
+        >
+          <select
+            name="department"
+            required
+            class="w-32 rounded-md border border-slate-300 px-2 py-1 text-xs shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          >
+            <option value="" disabled selected>부서 선택</option>
+            <option value="ALL">전체</option>
+            {% for dept in departments %}
+              <option value="{{ dept }}">{{ dept }}</option>
+            {% endfor %}
+          </select>
+          <input
+            type="month"
+            name="year_month"
+            required
+            class="w-28 rounded-md border border-slate-300 px-2 py-1 text-xs shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          />
+          <div class="flex items-center gap-1">
+            <label for="plan_deadline" class="whitespace-nowrap">등록 마감</label>
+            <input
+              id="plan_deadline"
+              name="plan_deadline"
+              type="date"
+              class="rounded-md border border-slate-300 px-2 py-1 text-xs shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            />
+          </div>
+          <div class="flex items-center gap-1">
+            <label for="check_deadline" class="whitespace-nowrap">체크 마감</label>
+            <input
+              id="check_deadline"
+              name="check_deadline"
+              type="date"
+              class="rounded-md border border-slate-300 px-2 py-1 text-xs shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            />
+          </div>
+          <button
+            type="submit"
+            class="inline-flex items-center rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-indigo-700"
+          >
+            알림 메일 발송
+          </button>
+        </form>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if department_summaries %}
+    <div class="mb-2 flex items-center justify-end gap-2 text-xs text-slate-700">
+      <form
+        method="get"
+        action="{{ url_for('index') }}"
+        class="flex items-center gap-2"
+      >
+        <label for="department_filter" class="text-xs text-slate-600">부서 필터</label>
+        <select
+          id="department_filter"
+          name="department_filter"
+          class="w-32 rounded-md border border-slate-300 px-2 py-1 text-xs shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+        >
+          <option value="">전체</option>
+          {% for dept_key, dept_name in department_filter_options %}
+            <option value="{{ dept_key }}" {% if selected_department_filter == dept_key %}selected{% endif %}>{{ dept_name }}</option>
+          {% endfor %}
+        </select>
+        <button
+          type="submit"
+          class="inline-flex items-center rounded-md border border-slate-300 bg-white px-3 py-1 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+        >
+          적용
+        </button>
+      </form>
+    </div>
+
+    <div class="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+      <table class="min-w-full divide-y divide-slate-200 text-sm">
+        <thead class="bg-slate-50">
+          <tr>
+            <th class="px-4 py-2 text-center font-medium text-slate-600">부서</th>
+            <th class="px-4 py-2 text-center font-medium text-slate-600">계획 월</th>
+            <th class="px-4 py-2 text-center font-medium text-slate-600">누적 계획 금액</th>
+            <th class="px-4 py-2 text-center font-medium text-slate-600">세부내역</th>
+            <th class="px-4 py-2 text-center font-medium text-slate-600">상태</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100 bg-white">
+          {% for summary in department_summaries %}
+            <tr>
+              <td class="px-4 py-2 whitespace-nowrap text-center text-slate-800">
+                {{ summary["department_display"] }}
+              </td>
+              <td class="px-4 py-2 whitespace-nowrap text-center text-slate-800">
+                {{ summary["year_month"] }}
+              </td>
+              <td class="px-4 py-2 whitespace-nowrap text-center tabular-nums text-slate-800">
+                {{ "{:,.0f}".format(summary["total_amount"]) }} 원
+              </td>
+              <td class="px-4 py-2 whitespace-nowrap text-center">
+                <a
+                  href="{{ url_for('department_detail', department=summary['department'], year_month=summary['year_month']) }}"
+                  class="inline-flex items-center rounded-md border border-slate-300 bg-white px-3 py-1 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+                >
+                  세부내역 보기
+                </a>
+              </td>
+              <td class="px-4 py-2 whitespace-nowrap text-center text-slate-800">
+                {% set status = summary.get('status_label', '-') %}
+                {% if status == '마감' %}
+                  {% set badge_classes = 'bg-red-50 text-red-700 border-red-200' %}
+                {% elif status == '체크완료' %}
+                  {% set badge_classes = 'bg-blue-50 text-blue-700 border-blue-200' %}
+                {% elif status == '제출완료' %}
+                  {% set badge_classes = 'bg-emerald-50 text-emerald-700 border-emerald-200' %}
+                {% elif status == '임시저장' %}
+                  {% set badge_classes = 'bg-slate-50 text-slate-600 border-slate-200' %}
+                {% else %}
+                  {% set badge_classes = 'bg-slate-50 text-slate-500 border-slate-200' %}
+                {% endif %}
+
+                <span class="inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium {{ badge_classes }}">
+                  {{ status }}
+                </span>
+
+                {% if session.get('is_admin') %}
+                  {% if status != '마감' %}
+                    <form
+                      method="post"
+                      action="{{ url_for('close_plan_month', department=summary['department'], year_month=summary['year_month']) }}"
+                      class="inline-block ml-2"
+                    >
+                      <button
+                        type="submit"
+                        class="inline-flex items-center rounded-md border border-slate-300 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+                      >
+                        마감
+                      </button>
+                    </form>
+                  {% else %}
+                    <form
+                      method="post"
+                      action="{{ url_for('reopen_plan_month', department=summary['department'], year_month=summary['year_month']) }}"
+                      class="inline-block ml-2"
+                    >
+                      <button
+                        type="submit"
+                        class="inline-flex items-center rounded-md border border-slate-300 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+                      >
+                        마감 해제
+                      </button>
+                    </form>
+                  {% endif %}
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">
+      아직 등록된 자금계획이 없습니다.<br />
+      우측 상단의
+      <span class="font-medium text-slate-700">[새 계획 등록]</span>
+      버튼을 눌러 첫 계획을 입력해 보세요.
+    </div>
+  {% endif %}
+{% endblock %}

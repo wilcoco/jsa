@@ -1,0 +1,328 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <div class="mb-4 flex items-center justify-between">
+    <div>
+      <h2 class="text-base font-semibold text-slate-900">
+        {{ department }} 자금계획 세부내역
+        <span class="inline-flex items-center gap-2 ml-2 text-sm">
+          {% if prev_year_month %}
+            <a
+              href="{{ url_for('department_detail', department=department, year_month=prev_year_month) }}"
+              class="inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-300 bg-white text-xs text-slate-600 hover:bg-slate-50"
+              title="이전 달"
+            >
+              &lt;
+            </a>
+          {% endif %}
+          <span class="font-semibold">({{ year_month }})</span>
+          {% if next_year_month %}
+            <a
+              href="{{ url_for('department_detail', department=department, year_month=next_year_month) }}"
+              class="inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-300 bg-white text-xs text-slate-600 hover:bg-slate-50"
+              title="다음 달"
+            >
+              &gt;
+            </a>
+          {% endif %}
+        </span>
+      </h2>
+      <p class="text-xs text-slate-500 mt-1">
+        기준일: {{ today }}
+      </p>
+    </div>
+    <div class="flex items-center gap-3">
+      <form
+        method="get"
+        action="{{ url_for('export_department_plans', department=department, year_month=year_month) }}"
+        class="flex items-center gap-1 text-xs text-slate-700"
+      >
+        <label class="sr-only" for="start_ym">시작월</label>
+        <input
+          id="start_ym"
+          name="start_ym"
+          type="month"
+          required
+          value="{{ year_month }}"
+          class="w-24 rounded-md border border-slate-300 px-2 py-1 text-xs shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+        />
+        <span class="px-1">~</span>
+        <label class="sr-only" for="end_ym">종료월</label>
+        <input
+          id="end_ym"
+          name="end_ym"
+          type="month"
+          required
+          value="{{ year_month }}"
+          class="w-24 rounded-md border border-slate-300 px-2 py-1 text-xs shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+        />
+        <button
+          type="submit"
+          class="inline-flex items-center rounded-md border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 shadow-sm hover:bg-emerald-100"
+        >
+          엑셀 다운로드
+        </button>
+      </form>
+      <a
+        href="{{ url_for('index') }}"
+        class="inline-flex items-center rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+      >
+        ← 부서별 요약으로
+      </a>
+    </div>
+  </div>
+
+  {% if register_deadline or check_deadline %}
+    <div class="mb-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+      {% if register_deadline %}
+        <span class="mr-4">
+          등록 마감일:
+          <span class="font-semibold {{ 'text-red-600' if is_register_deadline_over else 'text-slate-900' }}">{{ register_deadline }}</span>
+          {% if is_register_deadline_over %}
+            <span class="ml-1 text-[11px] text-red-500">(마감 지남)</span>
+          {% endif %}
+        </span>
+      {% endif %}
+      {% if check_deadline %}
+        <span>
+          체크 마감일:
+          <span class="font-semibold {{ 'text-red-600' if is_check_deadline_over else 'text-slate-900' }}">{{ check_deadline }}</span>
+          {% if is_check_deadline_over %}
+            <span class="ml-1 text-[11px] text-red-500">(마감 지남)</span>
+          {% endif %}
+        </span>
+      {% endif %}
+    </div>
+  {% endif %}
+
+  {% if is_closed %}
+    <div class="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+      이 달의 자금계획은 마감되었습니다. 등록여부 및 이월 설정을 더 이상 수정할 수 없습니다.
+    </div>
+  {% endif %}
+
+  {% if plans %}
+    <form
+      method="post"
+      action="{{ url_for('update_plan_flags', department=department, year_month=year_month) }}"
+      class="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm"
+      data-is-closed="{{ '1' if is_closed else '0' }}"
+      data-check-deadline-over="{{ '1' if is_check_deadline_over else '0' }}"
+    >
+      <table class="min-w-full divide-y divide-slate-200 text-sm">
+        <thead class="bg-slate-50">
+          <tr>
+            <th class="px-4 py-2 whitespace-nowrap text-center font-medium text-slate-600">계획 월</th>
+            <th class="px-4 py-2 whitespace-nowrap text-center font-medium text-slate-600">업체명</th>
+            <th class="px-4 py-2 whitespace-nowrap text-center font-medium text-slate-600">계약금액</th>
+            <th class="px-4 py-2 whitespace-nowrap text-center font-medium text-slate-600">계획금액</th>
+            <th class="px-6 py-2 whitespace-nowrap text-left font-medium text-slate-600">내용</th>
+            <th class="px-4 py-2 whitespace-nowrap text-center font-medium text-slate-600">등록여부</th>
+            <th class="px-4 py-2 whitespace-nowrap text-center font-medium text-slate-600">이월</th>
+            <th class="px-4 py-2 whitespace-nowrap text-center font-medium text-slate-600">누적지급금액</th>
+            <th class="px-4 py-2 whitespace-nowrap text-center font-medium text-slate-600">남은잔액</th>
+            <th class="px-4 py-2 whitespace-nowrap text-center font-medium text-slate-600">등록일시</th>
+            {% if session.get('is_admin') %}
+              <th class="px-4 py-2 whitespace-nowrap text-center font-medium text-slate-600">관리</th>
+            {% endif %}
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100 bg-white">
+          {% for plan in plans %}
+            <tr>
+              <td class="px-4 py-2 whitespace-nowrap text-center text-slate-800">
+                {{ plan["year_month"] }}
+              </td>
+              <td class="px-4 py-2 whitespace-nowrap text-center text-slate-800">
+                <span class="vendor-text">{{ plan["vendor_name"] or "-" }}</span>
+                <input
+                  type="text"
+                  name="vendor_name_{{ plan["id"] }}"
+                  value="{{ plan["vendor_name"] or "" }}"
+                  class="vendor-input hidden w-28 rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-800 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                />
+              </td>
+              <td class="px-4 py-2 whitespace-nowrap text-center tabular-nums text-slate-800">
+                {% if plan["contract_amount"] is not none %}
+                  {{ "{:,.0f}".format(plan["contract_amount"]) }} 원
+                {% else %}
+                  -
+                {% endif %}
+              </td>
+              <td class="px-4 py-2 whitespace-nowrap text-center tabular-nums text-slate-900">
+                {{ "{:,.0f}".format(plan["amount"]) }} 원
+              </td>
+              <td class="px-6 py-2 whitespace-nowrap text-left text-slate-800 text-sm">
+                <span class="desc-text">{{ plan["description"] or "" }}</span>
+                <input
+                  type="text"
+                  name="description_{{ plan["id"] }}"
+                  value="{{ plan["description"] or "" }}"
+                  class="desc-input hidden w-full rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-800 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                />
+              </td>
+              <td class="px-4 py-2 whitespace-nowrap text-center text-slate-800">
+                <span
+                  class="registered-view text-xs font-semibold {% if plan["registered_flag"] %}text-indigo-600{% else %}text-slate-300{% endif %}"
+                >
+                  {% if plan["registered_flag"] %}등록{% else %}-{% endif %}
+                </span>
+                <input
+                  type="checkbox"
+                  name="registered_flag_{{ plan["id"] }}"
+                  class="registered-input h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 editable-checkbox hidden"
+                  {% if plan["registered_flag"] %}checked{% endif %}
+                />
+              </td>
+              <td class="px-4 py-2 whitespace-nowrap text-center text-slate-800">
+                <span
+                  class="carryover-view text-xs font-semibold {% if plan["carry_over"] %}text-indigo-600{% else %}text-slate-300{% endif %}"
+                >
+                  {% if plan["carry_over"] %}이월{% else %}-{% endif %}
+                </span>
+                <input
+                  type="checkbox"
+                  name="carry_over_{{ plan["id"] }}"
+                  class="carryover-input h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 editable-checkbox hidden"
+                  {% if plan["carry_over"] %}checked{% endif %}
+                />
+              </td>
+              <td class="px-4 py-2 whitespace-nowrap text-center tabular-nums text-slate-800">
+                {% if plan["total_paid"] is not none %}
+                  {{ "{:,.0f}".format(plan["total_paid"]) }} 원
+                {% else %}
+                  -
+                {% endif %}
+              </td>
+              <td class="px-4 py-2 whitespace-nowrap text-center tabular-nums text-slate-800">
+                {% if plan["remaining"] is not none %}
+                  {{ "{:,.0f}".format(plan["remaining"]) }} 원
+                {% else %}
+                  -
+                {% endif %}
+              </td>
+              <td class="px-4 py-2 whitespace-nowrap text-center text-slate-500 text-xs">
+                {{ plan["created_at"] }}
+              </td>
+              {% if session.get('is_admin') %}
+                <td class="px-4 py-2 whitespace-nowrap text-center text-slate-800">
+                  <button
+                    type="submit"
+                    formmethod="post"
+                    formaction="{{ url_for('admin_delete_plan', plan_id=plan["id"], department=department, year_month=year_month) }}"
+                    onclick="return confirm('해당 계획을 삭제하시겠습니까?');"
+                    class="inline-flex items-center rounded-md border border-red-300 bg-white px-2 py-1 text-xs font-medium text-red-600 shadow-sm hover:bg-red-50"
+                  >
+                    삭제
+                  </button>
+                </td>
+              {% endif %}
+            </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot class="bg-slate-50 border-t border-slate-200">
+          <tr>
+            <td class="px-4 py-2 whitespace-nowrap text-center text-slate-800"></td>
+            <td class="px-4 py-2 whitespace-nowrap text-center font-semibold text-slate-900">소계</td>
+            <td class="px-4 py-2 whitespace-nowrap text-center tabular-nums font-semibold text-slate-900">
+              {% if total_contract_amount %}
+                {{ "{:,.0f}".format(total_contract_amount) }} 원
+              {% else %}
+                -
+              {% endif %}
+            </td>
+            <td class="px-4 py-2 whitespace-nowrap text-center tabular-nums font-semibold text-slate-900">
+              {{ "{:,.0f}".format(total_amount) }} 원
+            </td>
+            <td class="px-6 py-2 whitespace-nowrap text-left text-slate-800"></td>
+            <td class="px-4 py-2 whitespace-nowrap text-center text-slate-800"></td>
+            <td class="px-4 py-2 whitespace-nowrap text-center text-slate-800"></td>
+            <td class="px-4 py-2 whitespace-nowrap text-center tabular-nums font-semibold text-slate-900">
+              {% if total_total_paid %}
+                {{ "{:,.0f}".format(total_total_paid) }} 원
+              {% else %}
+                -
+              {% endif %}
+            </td>
+            <td class="px-4 py-2 whitespace-nowrap text-center tabular-nums font-semibold text-slate-900">
+              {% if total_remaining %}
+                {{ "{:,.0f}".format(total_remaining) }} 원
+              {% else %}
+                -
+              {% endif %}
+            </td>
+            <td class="px-4 py-2 whitespace-nowrap text-center text-slate-500 text-xs"></td>
+            {% if session.get('is_admin') %}
+              <td class="px-4 py-2 whitespace-nowrap text-center text-slate-800"></td>
+            {% endif %}
+          </tr>
+        </tfoot>
+      </table>
+
+      <div class="flex justify-end gap-2 border-t border-slate-200 bg-slate-50 px-4 py-2">
+        {% if not is_closed and not is_check_deadline_over %}
+          <button
+            type="button"
+            class="inline-flex items-center rounded-md border border-slate-300 bg-white px-4 py-1.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
+            onclick="toggleEditMode()"
+          >
+            수정
+          </button>
+          <button
+            type="submit"
+            class="inline-flex items-center rounded-md bg-indigo-600 px-4 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700"
+          >
+            저장
+          </button>
+        {% else %}
+          {% if is_closed %}
+            <span class="text-xs text-slate-500">마감된 월은 등록여부/이월을 변경할 수 없습니다.</span>
+          {% elif is_check_deadline_over %}
+            <span class="text-xs text-red-600">체크 마감일이 지나 등록여부/이월을 변경할 수 없습니다.</span>
+          {% endif %}
+        {% endif %}
+      </div>
+    </form>
+  {% else %}
+    <div class="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">
+      이 부서에 등록된 자금계획이 없습니다.
+    </div>
+  {% endif %}
+  <script>
+    const detailForm = document.querySelector('form[action^="{{ url_for("update_plan_flags", department=department, year_month=year_month) }}"]');
+    const isClosedDetail =
+      detailForm && detailForm.getAttribute('data-is-closed') === '1';
+    const isCheckDeadlineOver =
+      detailForm && detailForm.getAttribute('data-check-deadline-over') === '1';
+
+    function toggleEditMode() {
+      if (isClosedDetail || isCheckDeadlineOver) return;
+
+      const vendorTexts = document.querySelectorAll(".vendor-text");
+      const vendorInputs = document.querySelectorAll(".vendor-input");
+      const descTexts = document.querySelectorAll(".desc-text");
+      const descInputs = document.querySelectorAll(".desc-input");
+      const registeredViews = document.querySelectorAll(".registered-view");
+      const registeredInputs = document.querySelectorAll(".registered-input");
+      const carryoverViews = document.querySelectorAll(".carryover-view");
+      const carryoverInputs = document.querySelectorAll(".carryover-input");
+
+      vendorTexts.forEach((el) => el.classList.toggle("hidden"));
+      vendorInputs.forEach((el) => el.classList.toggle("hidden"));
+      descTexts.forEach((el) => el.classList.toggle("hidden"));
+      descInputs.forEach((el) => el.classList.toggle("hidden"));
+
+      registeredViews.forEach((el) => el.classList.toggle("hidden"));
+      registeredInputs.forEach((el) => el.classList.toggle("hidden"));
+      carryoverViews.forEach((el) => el.classList.toggle("hidden"));
+      carryoverInputs.forEach((el) => el.classList.toggle("hidden"));
+    }
+
+    if ((isClosedDetail || isCheckDeadlineOver) && detailForm) {
+      const inputs = detailForm.querySelectorAll('input, textarea, select');
+      inputs.forEach((el) => {
+        el.setAttribute('disabled', 'disabled');
+      });
+    }
+  </script>
+{% endblock %}
