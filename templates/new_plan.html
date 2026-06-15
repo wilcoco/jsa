@@ -1,6 +1,8 @@
 {% extends "base.html" %}
 
 {% block content %}
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
   <div class="mb-4 flex items-center justify-between">
     <h2 class="text-base font-semibold text-slate-900">
       자금계획 등록
@@ -103,13 +105,30 @@
         </div>
       </div>
 
-      <div class="mb-2 flex items-start gap-2 rounded-md border border-indigo-200 bg-indigo-50 px-3 py-2 text-[11px] text-indigo-800">
-        <span class="font-semibold whitespace-nowrap">📋 엑셀 붙여넣기</span>
-        <span>
-          엑셀에서 <b>업체명 · 계약금액 · 계획금액 · 내용</b> 순서로 여러 행을 복사한 뒤,
-          아래 표의 첫 칸을 클릭하고 <b>Ctrl+V</b> 로 붙여넣으면 한 번에 입력됩니다.
-          행이 부족하면 자동으로 늘어나고, 맨 윗줄이 머리글(업체명/계약금액…)이면 자동으로 제외됩니다.
-        </span>
+      <div class="mb-2 rounded-md border border-indigo-200 bg-indigo-50 px-3 py-2 text-[11px] text-indigo-800">
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="font-semibold">📋 엑셀로 한 번에 입력</span>
+          <button
+            type="button"
+            id="download-template-btn"
+            class="inline-flex items-center rounded-md border border-indigo-300 bg-white px-2 py-1 text-[11px] font-medium text-indigo-700 shadow-sm hover:bg-indigo-100"
+          >
+            ① 엑셀 양식 다운로드
+          </button>
+          <button
+            type="button"
+            id="upload-excel-btn"
+            class="inline-flex items-center rounded-md border border-indigo-300 bg-white px-2 py-1 text-[11px] font-medium text-indigo-700 shadow-sm hover:bg-indigo-100"
+          >
+            ② 작성한 엑셀 올리기
+          </button>
+          <input type="file" id="excel-file-input" accept=".xlsx,.xls,.csv" class="hidden" />
+        </div>
+        <p class="mt-1 leading-relaxed">
+          <b>양식 다운로드</b> → 엑셀에서 <b>업체명 · 계약금액 · 계획금액 · 내용</b> 을 채운 뒤 → <b>작성한 엑셀 올리기</b> 하면 아래 표에 한 번에 입력됩니다.
+          올린 뒤 내용을 확인하고 <b>임시저장 / 최종제출</b> 을 눌러주세요.
+          (엑셀에서 영역을 복사해 아래 표 첫 칸에 <b>Ctrl+V</b> 로 붙여넣어도 됩니다.)
+        </p>
       </div>
 
       <div class="overflow-hidden rounded-md border border-slate-200 bg-white">
@@ -499,6 +518,44 @@
         return cells.some((c) => HEADER_KEYWORDS.indexOf((c || '').trim()) !== -1);
       }
 
+      // (startRow, startCol)부터 2차원 배열 값을 표에 채운다. 채워진 행 수를 반환.
+      function fillGrid(grid, startRow, startCol) {
+        // 첫 줄이 머리글이면 제외
+        if (grid.length > 1 && looksLikeHeader(grid[0])) {
+          grid = grid.slice(1);
+        }
+        if (!grid.length) return 0;
+
+        // 필요한 마지막 행까지 펼치기 (200행 한도)
+        const lastRow = Math.min(startRow + grid.length - 1, 200);
+        ensureRowsVisible(lastRow);
+
+        let filled = 0;
+        grid.forEach((cells, r) => {
+          const rowIndex = startRow + r;
+          if (rowIndex > 200) return;
+          let rowHasValue = false;
+          (cells || []).forEach((rawValue, c) => {
+            const colIndex = startCol + c;
+            if (colIndex >= COLUMN_FIELDS.length) return;
+            const field = COLUMN_FIELDS[colIndex];
+            const input = getCellInput(rowIndex, field);
+            if (!input) return;
+            let value = (rawValue == null ? '' : String(rawValue)).trim();
+            if (MONEY_FIELDS.has(field)) {
+              value = formatNumberWithCommas(value);
+            }
+            input.value = value;
+            if (value) rowHasValue = true;
+          });
+          if (rowHasValue) filled += 1;
+        });
+
+        updateRowNumbers();
+        updateAddRowButtonState();
+        return filled;
+      }
+
       function handlePaste(event) {
         if (isClosed || isEditDeadlineOver) return;
 
@@ -513,52 +570,128 @@
         const text = clipboard.getData('text');
         if (!text) return;
 
-        let grid = parseClipboard(text);
+        const grid = parseClipboard(text);
         // 단일 셀(탭/줄바꿈 없음) 붙여넣기는 기본 동작에 맡긴다.
         if (grid.length === 0) return;
         if (grid.length === 1 && grid[0].length === 1) return;
 
         event.preventDefault();
 
-        // 첫 줄이 머리글이면 제외
-        if (grid.length > 1 && looksLikeHeader(grid[0])) {
-          grid = grid.slice(1);
-        }
-        if (grid.length === 0) return;
-
-        const startField = match[1];
         const startRow = parseInt(match[2], 10);
-        const startCol = COLUMN_FIELDS.indexOf(startField);
-
-        // 필요한 마지막 행까지 펼치기 (200행 한도)
-        const lastRow = Math.min(startRow + grid.length - 1, 200);
-        ensureRowsVisible(lastRow);
-
-        grid.forEach((cells, r) => {
-          const rowIndex = startRow + r;
-          if (rowIndex > 200) return;
-          cells.forEach((rawValue, c) => {
-            const colIndex = startCol + c;
-            if (colIndex >= COLUMN_FIELDS.length) return;
-            const field = COLUMN_FIELDS[colIndex];
-            const input = getCellInput(rowIndex, field);
-            if (!input) return;
-            let value = (rawValue || '').trim();
-            if (MONEY_FIELDS.has(field)) {
-              value = formatNumberWithCommas(value);
-            }
-            input.value = value;
-          });
-        });
-
-        updateRowNumbers();
-        updateAddRowButtonState();
+        const startCol = COLUMN_FIELDS.indexOf(match[1]);
+        fillGrid(grid, startRow, startCol);
       }
 
       // 표 전체에 위임 방식으로 paste 이벤트 연결
       const planTable = document.querySelector('tbody');
       if (planTable) {
         planTable.addEventListener('paste', handlePaste);
+      }
+
+      // ===== 엑셀 양식 다운로드 / 업로드 =====
+      const downloadTemplateBtn = document.getElementById('download-template-btn');
+      const uploadExcelBtn = document.getElementById('upload-excel-btn');
+      const excelFileInput = document.getElementById('excel-file-input');
+
+      function xlsxReady() {
+        if (typeof XLSX === 'undefined') {
+          alert('엑셀 모듈을 아직 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.');
+          return false;
+        }
+        return true;
+      }
+
+      // 표에 입력된 값이 하나라도 있는지 확인
+      function hasAnyInput() {
+        return rows.some((row) =>
+          Array.from(row.querySelectorAll('input')).some((i) => (i.value || '').trim() !== '')
+        );
+      }
+
+      // 모든 행 입력값 초기화 후 기본 표시 상태로 되돌림
+      function clearAllRows() {
+        rows.forEach((row) => {
+          row.querySelectorAll('input').forEach((i) => {
+            i.value = '';
+          });
+          const summaryDiv = row.querySelector('.carry-summary');
+          if (summaryDiv) summaryDiv.classList.add('hidden');
+        });
+        initializeRowVisibility();
+      }
+
+      // 양식 다운로드: 머리글 + 예시 1행이 들어간 .xlsx 생성
+      function downloadTemplate() {
+        if (!xlsxReady()) return;
+        const aoa = [
+          ['업체명', '계약금액', '계획금액', '내용'],
+          ['○○상사', 1000000, 500000, '설비투자 선금'],
+        ];
+        const ws = XLSX.utils.aoa_to_sheet(aoa);
+        ws['!cols'] = [{ wch: 20 }, { wch: 14 }, { wch: 14 }, { wch: 32 }];
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, '자금계획');
+        XLSX.writeFile(wb, '자금계획_양식.xlsx');
+      }
+
+      // 업로드: .xlsx/.xls/.csv 파싱 후 표에 채움
+      function handleExcelFile(file) {
+        if (isClosed || isEditDeadlineOver) {
+          alert('마감되었거나 등록 마감일이 지나 업로드할 수 없습니다.');
+          return;
+        }
+        if (!xlsxReady()) return;
+
+        const reader = new FileReader();
+        reader.onload = function (e) {
+          try {
+            const data = new Uint8Array(e.target.result);
+            const wb = XLSX.read(data, { type: 'array' });
+            const ws = wb.Sheets[wb.SheetNames[0]];
+            if (!ws) {
+              alert('엑셀에서 시트를 찾을 수 없습니다.');
+              return;
+            }
+            let grid = XLSX.utils.sheet_to_json(ws, { header: 1, blankrows: false, raw: false });
+            // 완전히 빈 행 제거
+            grid = grid.filter(
+              (r) => r && r.some((c) => (c == null ? '' : String(c)).trim() !== '')
+            );
+            if (!grid.length) {
+              alert('파일에 데이터가 없습니다.');
+              return;
+            }
+            if (hasAnyInput() && !confirm('표에 입력된 내용을 지우고 업로드한 내용으로 채울까요?')) {
+              return;
+            }
+            clearAllRows();
+            const filled = fillGrid(grid, 1, 0);
+            if (filled > 0) {
+              alert(filled + '개 행이 입력되었습니다. 내용을 확인한 뒤 임시저장 또는 최종제출을 눌러주세요.');
+            } else {
+              alert('입력할 데이터를 찾지 못했습니다. 양식의 컬럼 순서(업체명·계약금액·계획금액·내용)를 확인해 주세요.');
+            }
+          } catch (err) {
+            alert('파일을 읽는 중 오류가 발생했습니다: ' + (err && err.message ? err.message : err));
+          }
+        };
+        reader.readAsArrayBuffer(file);
+      }
+
+      if (downloadTemplateBtn) {
+        downloadTemplateBtn.addEventListener('click', downloadTemplate);
+      }
+      if (uploadExcelBtn && excelFileInput) {
+        uploadExcelBtn.addEventListener('click', function () {
+          excelFileInput.click();
+        });
+        excelFileInput.addEventListener('change', function () {
+          if (this.files && this.files[0]) {
+            handleExcelFile(this.files[0]);
+          }
+          // 같은 파일을 다시 선택해도 change 가 발생하도록 초기화
+          this.value = '';
+        });
       }
 
       // 폼 전송 전에 금액 입력에서 콤마 제거
