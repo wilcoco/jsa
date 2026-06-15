@@ -103,6 +103,15 @@
         </div>
       </div>
 
+      <div class="mb-2 flex items-start gap-2 rounded-md border border-indigo-200 bg-indigo-50 px-3 py-2 text-[11px] text-indigo-800">
+        <span class="font-semibold whitespace-nowrap">📋 엑셀 붙여넣기</span>
+        <span>
+          엑셀에서 <b>업체명 · 계약금액 · 계획금액 · 내용</b> 순서로 여러 행을 복사한 뒤,
+          아래 표의 첫 칸을 클릭하고 <b>Ctrl+V</b> 로 붙여넣으면 한 번에 입력됩니다.
+          행이 부족하면 자동으로 늘어나고, 맨 윗줄이 머리글(업체명/계약금액…)이면 자동으로 제외됩니다.
+        </span>
+      </div>
+
       <div class="overflow-hidden rounded-md border border-slate-200 bg-white">
         <table class="min-w-full divide-y divide-slate-200 text-sm">
           <thead class="bg-slate-50">
@@ -453,6 +462,103 @@
       }
       if (monthInput) {
         monthInput.addEventListener('change', applyCarryOver);
+      }
+
+      // 엑셀 붙여넣기: 표의 한 칸에 여러 셀/행을 한 번에 붙여넣으면 그 위치부터 채운다.
+      // 컬럼 순서는 화면 표와 동일: 업체명 → 계약금액 → 계획금액 → 내용
+      const COLUMN_FIELDS = ['vendor_name', 'contract_amount', 'amount', 'description'];
+      const MONEY_FIELDS = new Set(['contract_amount', 'amount']);
+      const HEADER_KEYWORDS = ['업체명', '계약금액', '계획금액', '금액', '내용'];
+
+      function getCellInput(rowIndex, fieldName) {
+        return document.querySelector('input[name="' + fieldName + '_' + rowIndex + '"]');
+      }
+
+      // 지정한 행 번호까지 모두 보이도록 펼친다 (최대 200행).
+      function ensureRowsVisible(targetRowIndex) {
+        rows.forEach((row) => {
+          const idx = parseInt(row.getAttribute('data-row-index'), 10);
+          if (idx <= targetRowIndex) {
+            row.style.display = '';
+          }
+        });
+        updateRowNumbers();
+        updateAddRowButtonState();
+      }
+
+      // 붙여넣은 텍스트(TSV)를 2차원 배열로 파싱한다.
+      function parseClipboard(text) {
+        // 마지막 줄바꿈으로 생기는 빈 행 제거
+        const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').replace(/\n+$/, '');
+        if (!normalized) return [];
+        return normalized.split('\n').map((line) => line.split('\t'));
+      }
+
+      // 첫 줄이 머리글 행인지 판별 (업체명/계약금액/계획금액/내용 등 텍스트가 포함된 경우)
+      function looksLikeHeader(cells) {
+        return cells.some((c) => HEADER_KEYWORDS.indexOf((c || '').trim()) !== -1);
+      }
+
+      function handlePaste(event) {
+        if (isClosed || isEditDeadlineOver) return;
+
+        const target = event.target;
+        if (!target || target.tagName !== 'INPUT') return;
+
+        const match = (target.name || '').match(/^(vendor_name|contract_amount|amount|description)_(\d+)$/);
+        if (!match) return;
+
+        const clipboard = (event.clipboardData || window.clipboardData);
+        if (!clipboard) return;
+        const text = clipboard.getData('text');
+        if (!text) return;
+
+        let grid = parseClipboard(text);
+        // 단일 셀(탭/줄바꿈 없음) 붙여넣기는 기본 동작에 맡긴다.
+        if (grid.length === 0) return;
+        if (grid.length === 1 && grid[0].length === 1) return;
+
+        event.preventDefault();
+
+        // 첫 줄이 머리글이면 제외
+        if (grid.length > 1 && looksLikeHeader(grid[0])) {
+          grid = grid.slice(1);
+        }
+        if (grid.length === 0) return;
+
+        const startField = match[1];
+        const startRow = parseInt(match[2], 10);
+        const startCol = COLUMN_FIELDS.indexOf(startField);
+
+        // 필요한 마지막 행까지 펼치기 (200행 한도)
+        const lastRow = Math.min(startRow + grid.length - 1, 200);
+        ensureRowsVisible(lastRow);
+
+        grid.forEach((cells, r) => {
+          const rowIndex = startRow + r;
+          if (rowIndex > 200) return;
+          cells.forEach((rawValue, c) => {
+            const colIndex = startCol + c;
+            if (colIndex >= COLUMN_FIELDS.length) return;
+            const field = COLUMN_FIELDS[colIndex];
+            const input = getCellInput(rowIndex, field);
+            if (!input) return;
+            let value = (rawValue || '').trim();
+            if (MONEY_FIELDS.has(field)) {
+              value = formatNumberWithCommas(value);
+            }
+            input.value = value;
+          });
+        });
+
+        updateRowNumbers();
+        updateAddRowButtonState();
+      }
+
+      // 표 전체에 위임 방식으로 paste 이벤트 연결
+      const planTable = document.querySelector('tbody');
+      if (planTable) {
+        planTable.addEventListener('paste', handlePaste);
       }
 
       // 폼 전송 전에 금액 입력에서 콤마 제거
